@@ -1,22 +1,13 @@
-# ============================================================
-# CLEAN END-TO-END PIPELINE
+
 # Code-A strategy + carbon-derived Mw + BP + transport + carbon validation
-#
+
 # Inputs:
 #   1) LKM prediction workbook (e.g. Combined_A_B_C_outputs_like_reference.xlsx)
 #      containing A_final_fit / B_final_fit / C_final_fit / full36_final_fit
 #      or combined_fit_wide / final_LKM_fit
 #   2) Raw detailed C5-C45 PIONA Excel files
-#
-# Outputs:
-#   - reconstructed pseudo-C5-C45 distributions from LKM predicted lumps
-#   - full C5-C45 distributions from PIONA
-#   - BP curves and distillation points
-#   - Mw, density, API from carbon-family distribution
-#   - transport properties: mu, D_eff, L_eff, Da_mob, Da_ext, Da_heat
-#   - carbon-number validation: integer C profiles, C10/C50/C90, HTI/LTI, moments
-#   - plots and Excel workbook
-# ============================================================
+
+
 
 !pip install openpyxl xlsxwriter scipy -q
 
@@ -28,10 +19,6 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 from google.colab import files
-
-# ============================================================
-# 1. USER INPUT
-# ============================================================
 
 print("Upload:")
 print("1) LKM prediction workbook, e.g. Combined_A_B_C_outputs_like_reference.xlsx")
@@ -65,9 +52,6 @@ PLOT_DIR = OUTDIR / "plots"
 PLOT_DIR.mkdir(exist_ok=True)
 FIG_DPI = 500
 
-# ============================================================
-# 2. SETTINGS
-# ============================================================
 
 FAMILY_COLS = ["Paraffins", "Isoparaffins", "Olefins", "Naphthenes", "Aromatics"]
 LUMPS = ["HP", "HIP", "LP", "LIP", "HO", "HNAP", "LO", "LNAP", "aroma"]
@@ -149,9 +133,6 @@ FAMILY_VISC = {
     "Aromatics": {"mu0": 0.020, "E": 28000},
 }
 
-# ============================================================
-# 3. HELPER / PROPERTY FUNCTIONS
-# ============================================================
 
 def clean_name(path):
     name = Path(path).stem
@@ -326,10 +307,6 @@ def carbon_moments(g):
         "HTI_over_LTI": hti / max(lti, 1e-12),
     })
 
-# ============================================================
-# 4. READ LKM PREDICTION WORKBOOK
-# ============================================================
-
 xls = pd.ExcelFile(lkm_file)
 preferred_sheets = ["A_final_fit", "B_final_fit", "C_final_fit", "full36_final_fit"]
 available_model_sheets = [s for s in preferred_sheets if s in xls.sheet_names]
@@ -376,10 +353,6 @@ lkm_pred = pd.concat(lkm_frames, ignore_index=True)
 severity_ref = lkm_pred[["case_id", "label", "relative_severity_S_over_Sref", "dS_rel_from_reference"]].drop_duplicates(subset=["case_id"])
 print("Loaded LKM prediction rows:", len(lkm_pred))
 display(lkm_pred.head())
-
-# ============================================================
-# 5. READ RAW C5-C45 PIONA FILES
-# ============================================================
 
 def read_piona_file(path):
     meta = parse_filename(path)
@@ -441,10 +414,6 @@ piona_long["zone"] = piona_long.apply(lambda r: assign_zone(r["lump"], r["Carbon
 piona_long = piona_long.dropna(subset=["lump", "zone"]).copy()
 print("Loaded PIONA rows:", len(piona_long))
 display(piona_long.head())
-
-# ============================================================
-# 6. CODE-A STYLE SEVERITY-CONDITIONED ZONE + CARBON FINGERPRINTS
-# ============================================================
 
 zone_case_rows = []
 for (case_id, lump), g in piona_long.groupby(["case_id", "lump"]):
@@ -521,10 +490,6 @@ for _, zr in zone_model.iterrows():
 if fallback_rows:
     carbon_fingerprint_model = pd.concat([carbon_fingerprint_model, pd.DataFrame(fallback_rows)], ignore_index=True)
 
-# ============================================================
-# 7. RECONSTRUCT PSEUDO C5-C45 DISTRIBUTION FROM LKM LUMPS
-# ============================================================
-
 def predict_zone_weights(lump, dS_rel):
     g = zone_model[zone_model["lump"] == lump].copy()
     if g.empty:
@@ -573,10 +538,6 @@ full_long["mass_fraction"] = full_long["mass_fraction"] / full_long.groupby("cas
 combined_long = pd.concat([recon_long, full_long], ignore_index=True, sort=False)
 combined_long["C"] = combined_long["CarbonNumber"].round().astype(int)
 
-# ============================================================
-# 8. INTEGER CARBON DISTRIBUTION + CARBON METRICS
-# ============================================================
-
 integer_carbon = (
     combined_long
     .groupby(["source", "model", "case_id", "label", "relative_severity_S_over_Sref", "dS_rel_from_reference", "C"], as_index=False)["mass_fraction"]
@@ -612,10 +573,6 @@ for model, g in carbon_profile_comparison.groupby("model"):
         "carbon_profile_correlation": np.corrcoef(temp["wt_percent"], temp["wt_percent_C5C45"])[0, 1] if len(temp) >= 3 else np.nan,
     })
 carbon_profile_metrics = pd.DataFrame(carbon_profile_metrics_rows)
-
-# ============================================================
-# 9. BP CURVES AND PROPERTY SUMMARY FROM CARBON-FAMILY DISTRIBUTION
-# ============================================================
 
 def summarize_distribution(g):
     weights = g["mass_fraction"].values.astype(float)
@@ -674,10 +631,6 @@ for (source, model, case_id), g in combined_long.groupby(["source", "model", "ca
         })
 bp_curves = pd.concat(bp_rows, ignore_index=True)
 dist_points = pd.DataFrame(dist_rows)
-
-# ============================================================
-# 10. TRANSPORT ANALYSIS
-# ============================================================
 
 def add_X_comp(df):
     df = df.copy()
@@ -776,10 +729,6 @@ summary["I_Deff"] = summary.groupby("model")["D_eff_m2s"].transform(lambda x: mi
 summary["I_Damob"] = summary.groupby("model")["Da_mob"].transform(lambda x: minmax(np.log10(x), invert=True))
 summary["PPQ_product_phase_quality"] = 0.40 * summary["X_comp"] + 0.20 * summary["I_mu"] + 0.20 * summary["I_Deff"] + 0.20 * summary["I_Damob"]
 
-# ============================================================
-# 11. COMPARISON AND METRICS
-# ============================================================
-
 compare_cols = [
     "Mw_app_gmol", "density_app_gml", "API_app", "Cbar", "Cbar_integer", "C_std", "C_skew", "C10", "C50", "C90", "LTI_C_lt_15", "HTI_C_gt_30", "HTI_over_LTI",
     "Light_frac", "Heavy_frac", "Aromatic_frac", "P_frac", "iP_frac", "O_frac", "N_frac", "A_frac",
@@ -853,10 +802,6 @@ for model, g in summary.groupby("model"):
         "PPQ_max": ppq_max, "Heavy_min": heavy_min, "Aromatic_max": Amax,
     })
 transition_df = pd.DataFrame(transition_rows)
-
-# ============================================================
-# 12. PLOTS
-# ============================================================
 
 def savefig(name):
     path = PLOT_DIR / name
@@ -980,10 +925,6 @@ plt.title("Transport regime map")
 plt.grid(True, which="both", linestyle=":")
 plt.legend(fontsize=8)
 savefig("regime_map_Damob_Daheat.png")
-
-# ============================================================
-# 13. EXPORT
-# ============================================================
 
 formulae = pd.DataFrame({
     "Quantity": ["Zone model", "Carbon fingerprint", "Reconstructed mass", "Integer carbon wt%", "C10/C50/C90", "HTI/LTI", "Mw", "Density", "BP", "Da_mob", "Da_ext", "Da_heat"],
